@@ -114,7 +114,7 @@ void handle_new_connection(int master_sockfd, fd_set* fdset_ref, int* max_fd){
 		
         FD_SET(new_sockfd, fdset_ref);
         *max_fd = (new_sockfd > (*max_fd)?new_sockfd:(*max_fd));
-		printf("max_fd changed to %d\n", *max_fd);
+		//printf("max_fd changed to %d\n", *max_fd);
 		
 		char w_buffer[BUF_SIZE];
         int w_bytes;
@@ -125,21 +125,6 @@ void handle_new_connection(int master_sockfd, fd_set* fdset_ref, int* max_fd){
 	}
 	else{
 		error_exit("failed accept()\n");
-	}
-}
-
-void handle_client_requests(int slave_sockfd, fd_set* fdset_ref){
-	char r_buffer[BUF_SIZE];
-    int r_bytes;
-	
-	bzero(r_buffer, BUF_SIZE);
-    r_bytes = read(slave_sockfd, r_buffer, BUF_SIZE);
-	
-	if(r_bytes == 0){
-	    close(slave_sockfd);
-	    FD_CLR(slave_sockfd, fdset_ref);
-		printf("close socket file descriptor %d\n", slave_sockfd);
-		printf("------------------------------------------\n");
 	}
 }
 
@@ -167,7 +152,6 @@ int main(int argc, char *argv[]){
 		struct timeval timeout;
 		timeout.tv_sec = 3;
 		timeout.tv_usec = 0;
-		
 		
 		num_of_fd = max_fd+1;
         read_fd_set = listened_fd_set;

@@ -44,6 +44,21 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
 
 int read_previous_pipe();
 ////////////////////////////////////////////////////////////////////////////
+void handle_client_requests(int slave_sockfd, fd_set* fdset_ref){
+	char r_buffer[BUF_SIZE];
+    int r_bytes;
+	
+	bzero(r_buffer, BUF_SIZE);
+    r_bytes = read(slave_sockfd, r_buffer, BUF_SIZE);
+	
+	if(r_bytes == 0){ //when a client quits
+	    close(slave_sockfd);
+	    FD_CLR(slave_sockfd, fdset_ref);
+		printf("close socket file descriptor %d\n", slave_sockfd);
+		printf("------------------------------------------\n");
+	}
+}
+
 void serve(int sockfd){
     char w_buffer[BUF_SIZE], r_buffer[BUF_SIZE];
     int w_bytes, r_bytes;
