@@ -109,14 +109,37 @@ void handle_new_connection(int master_sockfd, fd_set* fdset_ref, int* max_fd){
 		char from[INET_ADDRSTRLEN];
         printf("new connection from ");
         printf("%s\n", inet_ntop(AF_INET, &(client_addr.sin_addr), from, INET_ADDRSTRLEN));
-        printf("use socket %d to handle\n", new_sockfd);
+        printf("create socket file descriptor %d to handle\n", new_sockfd);
+		printf("------------------------------------------\n");
 		
         FD_SET(new_sockfd, fdset_ref);
         *max_fd = (new_sockfd > (*max_fd)?new_sockfd:(*max_fd));
-		printf("\nmax_fd changed to %d\n", *max_fd);
+		printf("max_fd changed to %d\n", *max_fd);
+		
+		char w_buffer[BUF_SIZE];
+        int w_bytes;
+		send_welcome_msg(new_sockfd, w_buffer);
+		
+		sprintf(w_buffer, "%% ");
+        w_bytes = write(new_sockfd, w_buffer, strlen(w_buffer));
 	}
 	else{
 		error_exit("failed accept()\n");
+	}
+}
+
+void handle_client_requests(int slave_sockfd, fd_set* fdset_ref){
+	char r_buffer[BUF_SIZE];
+    int r_bytes;
+	
+	bzero(r_buffer, BUF_SIZE);
+    r_bytes = read(slave_sockfd, r_buffer, BUF_SIZE);
+	
+	if(r_bytes == 0){
+	    close(slave_sockfd);
+	    FD_CLR(slave_sockfd, fdset_ref);
+		printf("close socket file descriptor %d\n", slave_sockfd);
+		printf("------------------------------------------\n");
 	}
 }
 
@@ -124,7 +147,7 @@ int main(int argc, char *argv[]){
 
     char *service; //int server_port;
     struct sockaddr_in client_addr;
-    int master, slave; //master & slave sockfd(socked file descriptor)
+    int master; //master sockfd(socked file descriptor)
     unsigned int addrlen; //length of client's address
 
 	if(argc != 2) error_exit("usage: %s port\n", argv[0]);
@@ -145,6 +168,7 @@ int main(int argc, char *argv[]){
 		timeout.tv_sec = 3;
 		timeout.tv_usec = 0;
 		
+		
 		num_of_fd = max_fd+1;
         read_fd_set = listened_fd_set;
 		int status = select(num_of_fd, &read_fd_set, NULL, NULL, &timeout);
@@ -153,14 +177,13 @@ int main(int argc, char *argv[]){
 			//printf("timeout, no activities detected\n");
 		}
 		else if(status > 0){
-			printf("activities detected\n");
 			for(int fd = 0; fd <= num_of_fd; fd++){
 				if(FD_ISSET(fd, &read_fd_set)){
 					if(fd == master){ //master handles new connections
 						handle_new_connection(fd, &listened_fd_set, &max_fd);
 					}
-					else{ //slaves handle data from clients
-						
+					else{ //slaves handle commands from clients
+						handle_client_requests(fd, &listened_fd_set);
 					}
 				}
 			}
