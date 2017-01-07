@@ -40,81 +40,80 @@ vector<struct record> table;
 void send_welcome_msg(int sockfd, char *buffer);
 int parse_received_msg(char *r_buffer, struct cmd* cmds);
 int execute_cmds(int num_of_cmd, struct cmd* cmds, int sockfd);
-void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, int stdout_fd, bool input_from_past, int err_input_fd);
 
+void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, int stdout_fd, bool input_from_past, int err_input_fd);
 int read_previous_pipe();
 ////////////////////////////////////////////////////////////////////////////
-void handle_client_requests(int slave_sockfd, fd_set* fdset_ref){
-	char r_buffer[BUF_SIZE];
-    int r_bytes;
+//Used in Project2
+void handle_new_connection(int master_sockfd, fd_set* fdset_ref, int* max_fd){
+	struct sockaddr_in client_addr;
+	socklen_t client_addrlen;
+	int new_sockfd = accept(master_sockfd, (struct sockaddr *)&client_addr, &client_addrlen);
 	
-	bzero(r_buffer, BUF_SIZE);
-    r_bytes = read(slave_sockfd, r_buffer, BUF_SIZE);
-	
-	if(r_bytes == 0){ //when a client quits
-	    close(slave_sockfd);
-	    FD_CLR(slave_sockfd, fdset_ref);
-		printf("close socket file descriptor %d\n", slave_sockfd);
+	if(new_sockfd != -1){
+		char from[INET_ADDRSTRLEN];
+        printf("new connection from ");
+        printf("%s\n", inet_ntop(AF_INET, &(client_addr.sin_addr), from, INET_ADDRSTRLEN));
+        printf("create socket file descriptor %d to handle\n", new_sockfd);
 		printf("------------------------------------------\n");
+		
+        FD_SET(new_sockfd, fdset_ref);
+        *max_fd = (new_sockfd > (*max_fd)?new_sockfd:(*max_fd));
+		//printf("max_fd changed to %d\n", *max_fd);
+		
+		char w_buffer[BUF_SIZE];
+        int w_bytes;
+		send_welcome_msg(new_sockfd, w_buffer);
+		
+		sprintf(w_buffer, "%% ");
+        w_bytes = write(new_sockfd, w_buffer, strlen(w_buffer));
+	}
+	else{
+		//error_exit("failed accept()\n");
 	}
 }
 
-void serve(int sockfd){
-    char w_buffer[BUF_SIZE], r_buffer[BUF_SIZE];
+void handle_client_request(int slave_sockfd, fd_set* fdset_ref){
+	char w_buffer[BUF_SIZE], r_buffer[BUF_SIZE];
     int w_bytes, r_bytes;
-
-    //Step1.send welcome messages
-    send_welcome_msg(sockfd, w_buffer);
-
-    sprintf(w_buffer, "%% ");
-    w_bytes = write(sockfd, w_buffer, strlen(w_buffer));
-    while(1){
-
-        //Step2.read messages from client
-        bzero(r_buffer, BUF_SIZE);
-        r_bytes = read(sockfd, r_buffer, BUF_SIZE);
-        for(int j = 0; j < strlen(r_buffer); j++){
+	
+	bzero(r_buffer, BUF_SIZE);
+    r_bytes = read(slave_sockfd, r_buffer, BUF_SIZE);
+	for(int j = 0; j < strlen(r_buffer); j++){
            if(r_buffer[j] == 13) r_buffer[j] = '\0';
-        }
-
-        if(strstr(r_buffer, "exit") != NULL){
-            break;
-        }
-
-        //Step3.parse received messages
-        struct cmd* cmds = (struct cmd*)malloc(sizeof(struct cmd)*NUM_OF_CMD);
-        int num_of_cmd;
-        num_of_cmd = parse_received_msg(r_buffer, cmds);
-
-        /*printf("/////%d/////\n",num_of_cmd);
-        for(int j = 0; j < num_of_cmd; j++){
-            printf("cmd[%d] ", j+1);
-            printf("type%d: ", cmds[j].type);
-            for(int k = 0; k < cmds[j].argn; k++){
-                printf("%s ", cmds[j].args[k]);
-            }
-            printf("\n");
-        }*/
-       
-        int result_fd = execute_cmds(num_of_cmd, cmds, sockfd);
+    }
+	
+	if(strstr(r_buffer, "exit") != NULL){
+        close(slave_sockfd);
+	    FD_CLR(slave_sockfd, fdset_ref);
+		printf("close socket file descriptor %d\n", slave_sockfd);
+		printf("------------------------------------------\n");
+    }
+	else{
+		//Step1.Parse received messages
+		struct cmd* cmds = (struct cmd*)malloc(sizeof(struct cmd)*NUM_OF_CMD);
+		int num_of_cmd;
+		num_of_cmd = parse_received_msg(r_buffer, cmds);
+		
+		//Step2.Execute commands
+		int result_fd = execute_cmds(num_of_cmd, cmds, slave_sockfd);
         bzero(w_buffer, BUF_SIZE);
         read(result_fd, w_buffer, BUF_SIZE);
-        //w_buffer[strlen(w_buffer)] = '\n';
-        write(sockfd, w_buffer, strlen(w_buffer));
+        write(slave_sockfd, w_buffer, strlen(w_buffer));
  
         free(cmds);
-
-        //Step4.
-        bzero(w_buffer, BUF_SIZE);
-        sprintf(w_buffer, "%% ");
-        w_bytes = write(sockfd, w_buffer, strlen(w_buffer));
-        if(w_bytes < 0) printf("failed write()\n");
-
-    }
-
-    table.clear();
+	
+		//Step3.
+		bzero(w_buffer, BUF_SIZE);
+		sprintf(w_buffer, "%% ");
+		w_bytes = write(slave_sockfd, w_buffer, strlen(w_buffer));
+		if(w_bytes < 0) printf("failed write()\n");
+	}
+	
+	table.clear();
 }
 
+//Used in Project1
 void send_welcome_msg(int sockfd, char *buffer){
     sprintf(buffer, "****************************************\n");
     write(sockfd, buffer, strlen(buffer));
@@ -188,7 +187,7 @@ int execute_cmds(int num_of_cmd, struct cmd* cmds, int sockfd){
     int stdout_fd = dup(1);
     int stderr_fd = dup(2);
 
-    int input_fd = read_previous_pipe(); //read args of current cmd from here
+    int input_fd = read_previous_pipe(); //read input of current cmd from here
     bool input_from_previous_pipe = (input_fd == 0)?false:true;
     int output_fd = out_pipe[1]; //write the output of a command to this
     int next_input_fd = out_pipe[0]; //read next cmd's input from here
@@ -258,7 +257,7 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
     char buffer[BUF_SIZE];
     bzero(buffer,BUF_SIZE);
 
-    if(command.type == 0){
+    if(command.type == 0){ //regular commands in ~/rwg/bin
         if(strcmp(command.args[0], "printenv") == 0){
             char* result = getenv(command.args[1]);
             sprintf(buffer, "PATH:%s\n", result);
@@ -372,11 +371,14 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
             write(it->writeOnly_fd, buffer, strlen(buffer));
         }
     }
-    else{ //>
+    else if(command.type == 3){ //>
         FILE* fptr = fopen(command.args[1], "w");
         read(input_fd, buffer, BUF_SIZE);
         write(fileno(fptr), buffer, strlen(buffer));
     }
+	else{ //execute additional commands in project2 [who], [tell], [yell], [name]
+		
+	}
 }
 
 int read_previous_pipe(){ //read input from previous cmd using pipe saved in table

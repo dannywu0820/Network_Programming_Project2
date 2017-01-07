@@ -25,13 +25,12 @@
 #define BUF_SIZE 30000
 ////////////////////////////////////////////////////////////////////////
 void Initial_Setup(){
-	setenv("PATH", "bin:.", 1);
-	
 	char initial_dir[50] = "";
 	strcat(initial_dir, getenv("HOME"));
-	strcat(initial_dir, "/rwg");
+	strcat(initial_dir, "/rwg/");
     chdir(initial_dir);
-	//printf("%s\n", initial_dir);
+	
+	setenv("PATH", "bin:.", 1);
 }
 
 void Reaper(int sig){
@@ -100,34 +99,6 @@ int passive_sock(const char *service, const char *transport, int q_len){
     return sock_fd; 
 }
 
-void handle_new_connection(int master_sockfd, fd_set* fdset_ref, int* max_fd){
-	struct sockaddr_in client_addr;
-	socklen_t client_addrlen;
-	int new_sockfd = accept(master_sockfd, (struct sockaddr *)&client_addr, &client_addrlen);
-	
-	if(new_sockfd != -1){
-		char from[INET_ADDRSTRLEN];
-        printf("new connection from ");
-        printf("%s\n", inet_ntop(AF_INET, &(client_addr.sin_addr), from, INET_ADDRSTRLEN));
-        printf("create socket file descriptor %d to handle\n", new_sockfd);
-		printf("------------------------------------------\n");
-		
-        FD_SET(new_sockfd, fdset_ref);
-        *max_fd = (new_sockfd > (*max_fd)?new_sockfd:(*max_fd));
-		//printf("max_fd changed to %d\n", *max_fd);
-		
-		char w_buffer[BUF_SIZE];
-        int w_bytes;
-		send_welcome_msg(new_sockfd, w_buffer);
-		
-		sprintf(w_buffer, "%% ");
-        w_bytes = write(new_sockfd, w_buffer, strlen(w_buffer));
-	}
-	else{
-		error_exit("failed accept()\n");
-	}
-}
-
 int main(int argc, char *argv[]){
 
     char *service; //int server_port;
@@ -167,7 +138,7 @@ int main(int argc, char *argv[]){
 						handle_new_connection(fd, &listened_fd_set, &max_fd);
 					}
 					else{ //slaves handle commands from clients
-						handle_client_requests(fd, &listened_fd_set);
+						handle_client_request(fd, &listened_fd_set);
 					}
 				}
 			}
