@@ -24,6 +24,11 @@ using namespace std;
 #define BUF_SIZE 30000
 #define NUM_OF_CMD 30000
 #define NUM_OF_RCD 1000
+
+//broadcast_to_all()
+#define ON_COME 1
+#define ON_LEAVE 0
+
 struct cmd{
     int type; //0:normal 1:|n 2:> xxx.txt 3:!n
     int argn;
@@ -37,33 +42,48 @@ struct record{
 };
 vector<struct record> table;
 
+struct user{
+	int sockfd;
+	char nickname[25];
+	char ip_port[25];
+};
+vector<struct user> user_table;
+
+void add_user(int sockfd, const char* ip, int port);
+void del_user(int sockfd);
+
+//handle_new_connection & handle_client_request
 void send_welcome_msg(int sockfd, char *buffer);
 int parse_received_msg(char *r_buffer, struct cmd* cmds);
 int execute_cmds(int num_of_cmd, struct cmd* cmds, int sockfd);
 
+//execute_cmds
 void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, int stdout_fd, bool input_from_past, int err_input_fd);
 int read_previous_pipe();
+
+void broadcast_to_all(struct user someone, int flag);
 ////////////////////////////////////////////////////////////////////////////
 //Used in Project2
 void handle_new_connection(int master_sockfd, fd_set* fdset_ref, int* max_fd){
 	struct sockaddr_in client_addr;
 	socklen_t client_addrlen;
+	char from[INET_ADDRSTRLEN];
+	
 	int new_sockfd = accept(master_sockfd, (struct sockaddr *)&client_addr, &client_addrlen);
+	const char *ip = inet_ntop(AF_INET, &(client_addr.sin_addr), from, INET_ADDRSTRLEN);
+	int port = ntohs(client_addr.sin_port);
 	
 	if(new_sockfd != -1){
-		char from[INET_ADDRSTRLEN];
-        printf("new connection from ");
-        printf("%s\n", inet_ntop(AF_INET, &(client_addr.sin_addr), from, INET_ADDRSTRLEN));
-        printf("create socket file descriptor %d to handle\n", new_sockfd);
-		printf("------------------------------------------\n");
-		
-        FD_SET(new_sockfd, fdset_ref);
+		FD_SET(new_sockfd, fdset_ref);
         *max_fd = (new_sockfd > (*max_fd)?new_sockfd:(*max_fd));
 		//printf("max_fd changed to %d\n", *max_fd);
 		
 		char w_buffer[BUF_SIZE];
         int w_bytes;
 		send_welcome_msg(new_sockfd, w_buffer);
+		
+		//add new user into user_table
+		add_user(new_sockfd, ip, port);
 		
 		sprintf(w_buffer, "%% ");
         w_bytes = write(new_sockfd, w_buffer, strlen(w_buffer));
@@ -84,10 +104,11 @@ void handle_client_request(int slave_sockfd, fd_set* fdset_ref){
     }
 	
 	if(strstr(r_buffer, "exit") != NULL){
-        close(slave_sockfd);
+		//remove user from user_table
+		del_user(slave_sockfd);
+		
+		close(slave_sockfd);
 	    FD_CLR(slave_sockfd, fdset_ref);
-		printf("close socket file descriptor %d\n", slave_sockfd);
-		printf("------------------------------------------\n");
     }
 	else{
 		//Step1.Parse received messages
@@ -111,6 +132,52 @@ void handle_client_request(int slave_sockfd, fd_set* fdset_ref){
 	}
 	
 	table.clear();
+}
+
+void add_user(int sockfd, const char* ip, int port){
+	struct user new_user;
+	new_user.sockfd = sockfd;
+	sprintf(new_user.nickname, "(no name)");
+	sprintf(new_user.ip_port, "%s/%d", ip, port);
+	user_table.push_back(new_user);
+	broadcast_to_all(new_user, ON_COME);
+	
+	printf("new connection from ");
+	printf("%s:%d\n", ip, port);
+	printf("create socket file descriptor %d to handle\n", sockfd);
+	printf("------------------------------------------\n");
+}
+
+void del_user(int sockfd){
+	vector<struct user>::iterator it;
+	for(it = user_table.begin(); it != user_table.end(); it++){
+		if(it->sockfd == sockfd) break;
+	}
+	struct user someone = *it;
+	user_table.erase(it);
+	broadcast_to_all(someone, ON_LEAVE);
+	
+	printf("close socket file descriptor %d\n", sockfd);
+	printf("------------------------------------------\n");
+}
+
+void broadcast_to_all(struct user someone, int flag){
+	char msg[100];
+	vector<struct user>::iterator it;
+	
+	if(flag == ON_COME){
+		sprintf(msg, "*** User '%s' entered from %s. ***\n", someone.nickname, someone.ip_port);
+	}
+	else if(flag == ON_LEAVE){
+		sprintf(msg, "*** User '%s' left. ***\n", someone.nickname);
+	}
+	else{
+		
+	}
+	
+	for(it = user_table.begin(); it != user_table.end(); it++){
+		write(it->sockfd, msg, strlen(msg));
+	}
 }
 
 //Used in Project1
