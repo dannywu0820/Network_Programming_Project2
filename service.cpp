@@ -1,4 +1,5 @@
 #include"service.h"
+#include"command.h"
 
 #include<stdio.h>
 #include<stdlib.h>
@@ -25,9 +26,10 @@ using namespace std;
 #define NUM_OF_CMD 30000
 #define NUM_OF_RCD 1000
 
-//broadcast_to_all()
 #define ON_COME 1
 #define ON_LEAVE 0
+#define ON_NAME 2
+command project2_cmd;
 
 struct cmd{
     int type; //0:normal 1:|n 2:> xxx.txt 3:!n
@@ -58,9 +60,10 @@ int parse_received_msg(char *r_buffer, struct cmd* cmds);
 int execute_cmds(int num_of_cmd, struct cmd* cmds, int sockfd);
 
 //execute_cmds
-void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, int stdout_fd, bool input_from_past, int err_input_fd);
+void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, int stdout_fd, bool input_from_past, int err_input_fd, int sockfd);
 int read_previous_pipe();
 
+//add_user & del_user
 void broadcast_to_all(struct user someone, int flag);
 ////////////////////////////////////////////////////////////////////////////
 //Used in Project2
@@ -70,7 +73,7 @@ void handle_new_connection(int master_sockfd, fd_set* fdset_ref, int* max_fd){
 	char from[INET_ADDRSTRLEN];
 	
 	int new_sockfd = accept(master_sockfd, (struct sockaddr *)&client_addr, &client_addrlen);
-	const char *ip = inet_ntop(AF_INET, &(client_addr.sin_addr), from, INET_ADDRSTRLEN);
+	const char* ip = inet_ntop(AF_INET, &(client_addr.sin_addr), from, INET_ADDRSTRLEN);
 	int port = ntohs(client_addr.sin_port);
 	
 	if(new_sockfd != -1){
@@ -172,7 +175,7 @@ void broadcast_to_all(struct user someone, int flag){
 		sprintf(msg, "*** User '%s' left. ***\n", someone.nickname);
 	}
 	else{
-		
+		sprintf(msg, "*** User from %s is named '%s'***\n", someone.ip_port, someone.nickname);
 	}
 	
 	for(it = user_table.begin(); it != user_table.end(); it++){
@@ -268,7 +271,7 @@ int execute_cmds(int num_of_cmd, struct cmd* cmds, int sockfd){
         dup2(output_fd, 1);
         dup2(err_output_fd, 2);
 
-        execute_single_cmd(cmds[i], i,input_fd, output_fd, stdout_fd, input_from_previous_pipe, result_pipe[0]);
+        execute_single_cmd(cmds[i], i, input_fd, output_fd, stdout_fd, input_from_previous_pipe, result_pipe[0], sockfd);
         input_from_previous_pipe = false; //used when i==0
 
         //stdin,stdout
@@ -320,11 +323,11 @@ int execute_cmds(int num_of_cmd, struct cmd* cmds, int sockfd){
     //return input_fd;    
     return result_pipe[0];    
 }
-void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, int stdout_fd, bool input_from_past, int err_input_fd){
+void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, int stdout_fd, bool input_from_past, int err_input_fd, int sockfd){
     char buffer[BUF_SIZE];
     bzero(buffer,BUF_SIZE);
 
-    if(command.type == 0){ //regular commands in ~/rwg/bin
+    if(command.type == 0){ //normal commands in ~/rwg/bin
         if(strcmp(command.args[0], "printenv") == 0){
             char* result = getenv(command.args[1]);
             sprintf(buffer, "PATH:%s\n", result);
@@ -334,6 +337,46 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
             setenv(command.args[1], command.args[2], 1);
             write(output_fd, buffer, strlen(buffer));
         }
+		else if(strcmp(command.args[0], "who") == 0){ 
+			vector<struct user>::iterator it;
+			sprintf(buffer, "<ID>[Tab]<nickname>[Tab]<IP/port>[Tab]<indicate me>\n");
+			for(it = user_table.begin(); it != user_table.end(); it++){
+				if(it->sockfd == sockfd){
+					sprintf(buffer+strlen(buffer), "%d	%s	%s	<-me\n", it->sockfd, it->nickname, it->ip_port);
+				}
+				else{
+					sprintf(buffer+strlen(buffer), "%d	%s	%s	    \n", it->sockfd, it->nickname, it->ip_port);
+				}
+			}
+			write(output_fd, buffer, strlen(buffer));
+		}
+		else if(strcmp(command.args[0], "name") == 0){
+			vector<struct user>::iterator it, user_now;
+			struct user someone;
+			bool repeated = false;
+			
+			for(it = user_table.begin(); it != user_table.end(); it++){
+				if(it->sockfd == sockfd){
+					user_now = it;
+				}
+				else{
+					if(strcmp(it->nickname, command.args[1]) == 0) repeated = true;
+				}
+			}
+			
+			if(!repeated){
+				bzero(user_now->nickname, 25);
+				sprintf(user_now->nickname, "%s", command.args[1]);
+				someone = *user_now;
+				broadcast_to_all(someone, ON_NAME);
+			}
+			else{
+				sprintf(buffer, "*** User '%s' already exists. ***\n", command.args[1]);
+				write(output_fd, buffer, strlen(buffer));
+			}
+		}
+		else if(strcmp(command.args[0], "tell") == 0){}
+		else if(strcmp(command.args[0], "yell") == 0){}
         else{
             vector<struct record>::iterator it;
             for(it = table.begin(); it != table.end(); it++){
@@ -438,14 +481,11 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
             write(it->writeOnly_fd, buffer, strlen(buffer));
         }
     }
-    else if(command.type == 3){ //>
+    else{ //>
         FILE* fptr = fopen(command.args[1], "w");
         read(input_fd, buffer, BUF_SIZE);
         write(fileno(fptr), buffer, strlen(buffer));
     }
-	else{ //execute additional commands in project2 [who], [tell], [yell], [name]
-		
-	}
 }
 
 int read_previous_pipe(){ //read input from previous cmd using pipe saved in table
