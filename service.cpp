@@ -375,8 +375,46 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
 				write(output_fd, buffer, strlen(buffer));
 			}
 		}
-		else if(strcmp(command.args[0], "tell") == 0){}
-		else if(strcmp(command.args[0], "yell") == 0){}
+		else if(strcmp(command.args[0], "tell") == 0){
+			vector<struct user>::iterator it, user_now;
+			bool existed = false;
+			for(it = user_table.begin(); it != user_table.end(); it++){
+				if(it->sockfd == sockfd){
+					user_now = it;
+				}
+				if(it->sockfd == atoi(command.args[1])){
+					existed = true;
+				}
+			}
+			
+			if(existed){
+				sprintf(buffer, "*** %s told you ***: ", user_now->nickname);
+				for(int i = 2; i < command.argn; i++) sprintf(buffer+strlen(buffer), "%s ", command.args[i]);
+				buffer[strlen(buffer)] = '\n';
+			
+				write(atoi(command.args[1]), buffer, strlen(buffer));
+			}
+			else{
+				sprintf(buffer, "*** Error: user #%s does not exist yet. ***\n", command.args[1]);
+				write(output_fd, buffer, strlen(buffer));
+			}
+		}
+		else if(strcmp(command.args[0], "yell") == 0){
+			vector<struct user>::iterator it, user_now;
+			for(it = user_table.begin(); it != user_table.end(); it++){
+				if(it->sockfd == sockfd){
+					user_now = it;
+				}
+			}
+			
+			sprintf(buffer, "*** %s yelled ***: ", user_now->nickname);
+			for(int i = 1; i < command.argn; i++) sprintf(buffer+strlen(buffer), "%s ", command.args[i]);
+			buffer[strlen(buffer)] = '\n';
+			
+			for(it = user_table.begin(); it != user_table.end(); it++){
+				write(it->sockfd, buffer, strlen(buffer));
+			}
+		}
         else{
             vector<struct record>::iterator it;
             for(it = table.begin(); it != table.end(); it++){
