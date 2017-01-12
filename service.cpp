@@ -1,5 +1,6 @@
 #include"service.h"
-#include"command.h"
+#include"user.h"
+//#include"command.h"
 
 #include<stdio.h>
 #include<stdlib.h>
@@ -19,6 +20,9 @@
 #include<stdarg.h>
 #include<fcntl.h>
 
+#include<iostream>
+#include<sstream>
+#include<string>
 #include<vector>
 using namespace std;
 
@@ -29,7 +33,6 @@ using namespace std;
 #define ON_COME 1
 #define ON_LEAVE 0
 #define ON_NAME 2
-command project2_cmd;
 
 struct cmd{
     int type; //0:normal 1:|n 2:> xxx.txt 3:!n
@@ -44,15 +47,15 @@ struct record{
 };
 vector<struct record> table;
 
-struct user{
-	int sockfd;
-	char nickname[25];
-	char ip_port[25];
-};
-vector<struct user> user_table;
+vector<User> user_table;
 
+////////////////////////////////////////////////////////////////////////////
+//handle_new_connection & handle_client_request
 void add_user(int sockfd, const char* ip, int port);
 void del_user(int sockfd);
+
+//add_user & del_user
+void broadcast_to_all(User someone, int flag);
 
 //handle_new_connection & handle_client_request
 void send_welcome_msg(int sockfd, char *buffer);
@@ -62,9 +65,6 @@ int execute_cmds(int num_of_cmd, struct cmd* cmds, int sockfd);
 //execute_cmds
 void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, int stdout_fd, bool input_from_past, int err_input_fd, int sockfd);
 int read_previous_pipe();
-
-//add_user & del_user
-void broadcast_to_all(struct user someone, int flag);
 ////////////////////////////////////////////////////////////////////////////
 //Used in Project2
 void handle_new_connection(int master_sockfd, fd_set* fdset_ref, int* max_fd){
@@ -138,10 +138,7 @@ void handle_client_request(int slave_sockfd, fd_set* fdset_ref){
 }
 
 void add_user(int sockfd, const char* ip, int port){
-	struct user new_user;
-	new_user.sockfd = sockfd;
-	sprintf(new_user.nickname, "(no name)");
-	sprintf(new_user.ip_port, "%s/%d", ip, port);
+	User new_user(sockfd, ip, port);
 	user_table.push_back(new_user);
 	broadcast_to_all(new_user, ON_COME);
 	
@@ -152,11 +149,12 @@ void add_user(int sockfd, const char* ip, int port){
 }
 
 void del_user(int sockfd){
-	vector<struct user>::iterator it;
+	vector<User>::iterator it;
 	for(it = user_table.begin(); it != user_table.end(); it++){
-		if(it->sockfd == sockfd) break;
+		if(it->get_sockfd() == sockfd) break;
 	}
-	struct user someone = *it;
+	
+	User someone = *it;
 	user_table.erase(it);
 	broadcast_to_all(someone, ON_LEAVE);
 	
@@ -164,22 +162,24 @@ void del_user(int sockfd){
 	printf("------------------------------------------\n");
 }
 
-void broadcast_to_all(struct user someone, int flag){
-	char msg[100];
-	vector<struct user>::iterator it;
+void broadcast_to_all(User someone, int flag){
+	stringstream ss;
+	string msg;
+	vector<User>::iterator it;
 	
 	if(flag == ON_COME){
-		sprintf(msg, "*** User '%s' entered from %s. ***\n", someone.nickname, someone.ip_port);
+		ss << "*** User '" << someone.get_nickname() <<"' entered from " << someone.get_ip_port() << ". ***\n";
 	}
 	else if(flag == ON_LEAVE){
-		sprintf(msg, "*** User '%s' left. ***\n", someone.nickname);
+		ss << "*** User '" << someone.get_nickname() << "' left. ***\n";
 	}
 	else{
-		sprintf(msg, "*** User from %s is named '%s'***\n", someone.ip_port, someone.nickname);
+		ss << "*** User from " << someone.get_ip_port() << " is named '" << someone.get_nickname() << "' ***\n";
 	}
 	
+	msg = ss.str();
 	for(it = user_table.begin(); it != user_table.end(); it++){
-		write(it->sockfd, msg, strlen(msg));
+		write(it->get_sockfd(), msg.c_str(), msg.length());
 	}
 }
 
@@ -338,7 +338,7 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
             write(output_fd, buffer, strlen(buffer));
         }
 		else if(strcmp(command.args[0], "who") == 0){ 
-			vector<struct user>::iterator it;
+			/*vector<struct user>::iterator it;
 			sprintf(buffer, "<ID>[Tab]<nickname>[Tab]<IP/port>[Tab]<indicate me>\n");
 			for(it = user_table.begin(); it != user_table.end(); it++){
 				if(it->sockfd == sockfd){
@@ -348,10 +348,11 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
 					sprintf(buffer+strlen(buffer), "%d	%s	%s	    \n", it->sockfd, it->nickname, it->ip_port);
 				}
 			}
-			write(output_fd, buffer, strlen(buffer));
+			write(output_fd, buffer, strlen(buffer));*/
+			//project2_cmd.who(user_table);
 		}
 		else if(strcmp(command.args[0], "name") == 0){
-			vector<struct user>::iterator it, user_now;
+			/*vector<struct user>::iterator it, user_now;
 			struct user someone;
 			bool repeated = false;
 			
@@ -373,10 +374,10 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
 			else{
 				sprintf(buffer, "*** User '%s' already exists. ***\n", command.args[1]);
 				write(output_fd, buffer, strlen(buffer));
-			}
+			}*/
 		}
 		else if(strcmp(command.args[0], "tell") == 0){
-			vector<struct user>::iterator it, user_now;
+			/*vector<struct user>::iterator it, user_now;
 			bool existed = false;
 			for(it = user_table.begin(); it != user_table.end(); it++){
 				if(it->sockfd == sockfd){
@@ -397,10 +398,10 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
 			else{
 				sprintf(buffer, "*** Error: user #%s does not exist yet. ***\n", command.args[1]);
 				write(output_fd, buffer, strlen(buffer));
-			}
+			}*/
 		}
 		else if(strcmp(command.args[0], "yell") == 0){
-			vector<struct user>::iterator it, user_now;
+			/*vector<struct user>::iterator it, user_now;
 			for(it = user_table.begin(); it != user_table.end(); it++){
 				if(it->sockfd == sockfd){
 					user_now = it;
@@ -413,7 +414,7 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
 			
 			for(it = user_table.begin(); it != user_table.end(); it++){
 				write(it->sockfd, buffer, strlen(buffer));
-			}
+			}*/
 		}
         else{
             vector<struct record>::iterator it;
