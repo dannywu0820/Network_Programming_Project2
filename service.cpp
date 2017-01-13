@@ -1,6 +1,6 @@
 #include"service.h"
 #include"user.h"
-//#include"command.h"
+#include"command.h"
 
 #include<stdio.h>
 #include<stdlib.h>
@@ -33,6 +33,8 @@ using namespace std;
 #define ON_COME 1
 #define ON_LEAVE 0
 #define ON_NAME 2
+
+Command project2_cmd;
 
 struct cmd{
     int type; //0:normal 1:|n 2:> xxx.txt 3:!n
@@ -174,7 +176,6 @@ void broadcast_to_all(User someone, int flag){
 		ss << "*** User '" << someone.get_nickname() << "' left. ***\n";
 	}
 	else{
-		ss << "*** User from " << someone.get_ip_port() << " is named '" << someone.get_nickname() << "' ***\n";
 	}
 	
 	msg = ss.str();
@@ -338,83 +339,20 @@ void execute_single_cmd(struct cmd command, int i, int input_fd, int output_fd, 
             write(output_fd, buffer, strlen(buffer));
         }
 		else if(strcmp(command.args[0], "who") == 0){ 
-			/*vector<struct user>::iterator it;
-			sprintf(buffer, "<ID>[Tab]<nickname>[Tab]<IP/port>[Tab]<indicate me>\n");
-			for(it = user_table.begin(); it != user_table.end(); it++){
-				if(it->sockfd == sockfd){
-					sprintf(buffer+strlen(buffer), "%d	%s	%s	<-me\n", it->sockfd, it->nickname, it->ip_port);
-				}
-				else{
-					sprintf(buffer+strlen(buffer), "%d	%s	%s	    \n", it->sockfd, it->nickname, it->ip_port);
-				}
-			}
-			write(output_fd, buffer, strlen(buffer));*/
-			//project2_cmd.who(user_table);
+			project2_cmd.who(user_table, sockfd);
 		}
 		else if(strcmp(command.args[0], "name") == 0){
-			/*vector<struct user>::iterator it, user_now;
-			struct user someone;
-			bool repeated = false;
-			
-			for(it = user_table.begin(); it != user_table.end(); it++){
-				if(it->sockfd == sockfd){
-					user_now = it;
-				}
-				else{
-					if(strcmp(it->nickname, command.args[1]) == 0) repeated = true;
-				}
-			}
-			
-			if(!repeated){
-				bzero(user_now->nickname, 25);
-				sprintf(user_now->nickname, "%s", command.args[1]);
-				someone = *user_now;
-				broadcast_to_all(someone, ON_NAME);
-			}
-			else{
-				sprintf(buffer, "*** User '%s' already exists. ***\n", command.args[1]);
-				write(output_fd, buffer, strlen(buffer));
-			}*/
+			project2_cmd.name(&user_table, sockfd, command.args[1]);
 		}
 		else if(strcmp(command.args[0], "tell") == 0){
-			/*vector<struct user>::iterator it, user_now;
-			bool existed = false;
-			for(it = user_table.begin(); it != user_table.end(); it++){
-				if(it->sockfd == sockfd){
-					user_now = it;
-				}
-				if(it->sockfd == atoi(command.args[1])){
-					existed = true;
-				}
-			}
-			
-			if(existed){
-				sprintf(buffer, "*** %s told you ***: ", user_now->nickname);
-				for(int i = 2; i < command.argn; i++) sprintf(buffer+strlen(buffer), "%s ", command.args[i]);
-				buffer[strlen(buffer)] = '\n';
-			
-				write(atoi(command.args[1]), buffer, strlen(buffer));
-			}
-			else{
-				sprintf(buffer, "*** Error: user #%s does not exist yet. ***\n", command.args[1]);
-				write(output_fd, buffer, strlen(buffer));
-			}*/
+			for(int i = 2; i < command.argn; i++) sprintf(buffer+strlen(buffer), "%s ", command.args[i]);
+			buffer[strlen(buffer)] = '\n';
+			project2_cmd.tell(user_table, sockfd, buffer, atoi(command.args[1]));
 		}
 		else if(strcmp(command.args[0], "yell") == 0){
-			/*vector<struct user>::iterator it, user_now;
-			for(it = user_table.begin(); it != user_table.end(); it++){
-				if(it->sockfd == sockfd){
-					user_now = it;
-				}
-			}
-			
-			sprintf(buffer, "*** %s yelled ***: ", user_now->nickname);
 			for(int i = 1; i < command.argn; i++) sprintf(buffer+strlen(buffer), "%s ", command.args[i]);
 			buffer[strlen(buffer)] = '\n';
-			
-			for(it = user_table.begin(); it != user_table.end(); it++){
-				write(it->sockfd, buffer, strlen(buffer));
-			}*/
+			project2_cmd.yell(user_table, sockfd, buffer);
 		}
         else{
             vector<struct record>::iterator it;

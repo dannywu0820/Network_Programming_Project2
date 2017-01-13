@@ -25,3 +25,7 @@ string User::get_nickname(){
 string User::get_ip_port(){
 	return this->ip_port;
 }
+
+void User::set_nickname(char* name){
+	this->nickname = name;
+}

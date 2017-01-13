@@ -15,6 +15,7 @@ class User{
 		int get_sockfd();
 		string get_nickname();
 		string get_ip_port();
+		void set_nickname(char*);
 };
 
 #endif
